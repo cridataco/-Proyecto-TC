@@ -3,7 +3,7 @@ $ServerInstance = "sqlserver"
 $DatabaseName = "[1marchadev];"
 $SqlUser = "sa"
 $SqlPassword = "abc123***"
-$SqlContainer = "mcr.microsoft.com/mssql-tools18"  # Imagen oficial de herramientas SQL
+$SqlContainer = "mcr.microsoft.com/mssql-tools:18.0.1.1"  # Imagen oficial de herramientas SQL
 
 # Rutas locales de los scripts SQL
 $Tablas = "./Tablas"
