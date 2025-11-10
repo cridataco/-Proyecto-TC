@@ -1,9 +1,9 @@
-# Par metros de conexi n
+# Par�metros de conexi�n
 $ServerInstance = "sqlserver"  
 $DatabaseName = "[1marchadev];"
 $SqlUser = "sa"
 $SqlPassword = "abc123***"
-$SqlContainer = "mcr.microsoft.com/mssql-tools:latest"  # Imagen oficial de herramientas SQL
+$SqlContainer = "mcr.microsoft.com/mssql-tools"  # Imagen oficial de herramientas SQL
 
 # Rutas locales de los scripts SQL
 $Tablas = "./Tablas"
@@ -17,7 +17,7 @@ if (!(Test-Path $Tablas) -or !(Test-Path $Procedures)) {
     exit 1
 }
 
-# Ejecutar script de creaci n de la base de datos y tablas
+# Ejecutar script de creaci�n de la base de datos y tablas
 Write-Host "Creando la base de datos y tablas..."
 $SqlFiles = Get-ChildItem -Path $Tablas -Filter "*.sql" | Sort-Object Name  # Ordena los scripts por nombre
 
@@ -28,7 +28,7 @@ if ($SqlFiles.Count -eq 0) {
     exit 1
 }
 
-# Ejecutar scripts en la base de datos master (para creaci n de BD)
+# Ejecutar scripts en la base de datos master (para creaci�n de BD)
 Write-Host "Ejecutando scripts en master..."
 foreach ($File in $SqlFiles) {
     Write-Host "Ejecutando: $($File.Name)..."
@@ -36,17 +36,17 @@ foreach ($File in $SqlFiles) {
         "/opt/mssql-tools/bin/sqlcmd -S $ServerInstance -U $SqlUser -P $SqlPassword -i /script.sql"
 
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "Error en la ejecuci n de $($File.Name)" -ForegroundColor Red
+        Write-Host "Error en la ejecuci�n de $($File.Name)" -ForegroundColor Red
         exit 1
     }
 }
 
 
-# Ejecutar script de creaci n de procedimientos almacenados
+# Ejecutar script de creaci�n de procedimientos almacenados
 Write-Host "Creando los Procedures..."
 $SqlFiles = Get-ChildItem -Path $Procedures -Filter "*.sql" | Sort-Object Name  # Ordena los scripts por nombre
 
-# Ejecutar scripts en la base de datos master (para creaci n de BD)
+# Ejecutar scripts en la base de datos master (para creaci�n de BD)
 Write-Host "Ejecutando scripts en master..."
 foreach ($File in $SqlFiles) {
     Write-Host "Ejecutando: $($File.Name)..."
@@ -54,7 +54,7 @@ foreach ($File in $SqlFiles) {
         "/opt/mssql-tools/bin/sqlcmd -S $ServerInstance -U $SqlUser -P $SqlPassword -i /script.sql"
 
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "Error en la ejecuci n de $($File.Name)" -ForegroundColor Red
+        Write-Host "Error en la ejecuci�n de $($File.Name)" -ForegroundColor Red
         exit 1
     }
 }
