@@ -1,9 +1,9 @@
 # Parámetros de conexión
 $ServerInstance = "sqlserver"  
-$DatabaseName = "1marchadev"  # Sin corchetes ni punto y coma
+$DatabaseName = "1marchadev"
 $SqlUser = "sa"
 $SqlPassword = "abc123***"
-$SqlContainer = "mcr.microsoft.com/mssql-tools"  # Imagen oficial de herramientas SQL
+$SqlContainer = "mcr.microsoft.com/mssql-tools"
 
 # Rutas locales de los scripts SQL
 $Tablas = "./Tablas"
@@ -15,115 +15,87 @@ if (!(Test-Path $Tablas) -or !(Test-Path $Procedures)) {
     exit 1
 }
 
-# Limpiar contenedores previos
-Write-Host "Limpiando contenedores previos..." -ForegroundColor Yellow
-docker container prune -f | Out-Null
+Write-Host "=== LIMPIANDO BASE DE DATOS EXISTENTE ===" -ForegroundColor Yellow
 
-# ========== PASO 1: CREAR TABLAS ==========
-Write-Host "`n=== CREANDO LA BASE DE DATOS Y TABLAS ===" -ForegroundColor Cyan
-$SqlFiles = Get-ChildItem -Path $Tablas -Filter "*.sql" | Sort-Object Name
+# Script para limpiar la base de datos
+$CleanupScript = @"
+USE master;
+GO
 
-# Verifica si hay archivos SQL
-if ($SqlFiles.Count -eq 0) {
-    Write-Host "Error: No se encontraron archivos SQL en la ruta $Tablas" -ForegroundColor Red
+IF EXISTS (SELECT name FROM sys.databases WHERE name = N'$DatabaseName')
+BEGIN
+    ALTER DATABASE [$DatabaseName] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+    DROP DATABASE [$DatabaseName];
+END
+GO
+
+CREATE DATABASE [$DatabaseName];
+GO
+"@
+
+# Guardar script de limpieza temporalmente
+$CleanupFile = "./cleanup_temp.sql"
+$CleanupScript | Out-File -FilePath $CleanupFile -Encoding UTF8
+
+# Ejecutar limpieza
+Write-Host "Eliminando y recreando la base de datos..." -ForegroundColor Yellow
+docker run --rm --network mi_red_sql -v "$(Resolve-Path $CleanupFile):/cleanup.sql" $SqlContainer /bin/bash -c `
+    "/opt/mssql-tools/bin/sqlcmd -S $ServerInstance -U $SqlUser -P '$SqlPassword' -i /cleanup.sql"
+
+# Eliminar archivo temporal
+Remove-Item $CleanupFile -Force
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Error al limpiar la base de datos" -ForegroundColor Red
     exit 1
 }
 
-Write-Host "Ejecutando scripts en master..." -ForegroundColor White
-Write-Host "Se ejecutarán $($SqlFiles.Count) scripts de tablas..." -ForegroundColor White
+Write-Host "Base de datos limpia y lista." -ForegroundColor Green
+Start-Sleep -Seconds 2
 
-$counter = 0
+# ========== CREAR TABLAS ==========
+Write-Host "`n=== CREANDO TABLAS ===" -ForegroundColor Cyan
+$SqlFiles = Get-ChildItem -Path $Tablas -Filter "*.sql" | Sort-Object Name
+
+if ($SqlFiles.Count -eq 0) {
+    Write-Host "Error: No se encontraron archivos SQL en $Tablas" -ForegroundColor Red
+    exit 1
+}
+
 foreach ($File in $SqlFiles) {
-    $counter++
-    Write-Host "[$counter/$($SqlFiles.Count)] Ejecutando: $($File.Name)..." -ForegroundColor White
+    Write-Host "Ejecutando: $($File.Name)..." -ForegroundColor White
     
-    # Obtener ruta absoluta
-    $absolutePath = (Resolve-Path $File.FullName).Path
-    
-    # Ejecutar con límites de memoria y timeout - SIN especificar base de datos
-    docker run --rm `
-        --network mi_red_sql `
-        --memory=512m `
-        --memory-swap=512m `
-        -v "${absolutePath}:/script.sql" `
-        $SqlContainer /bin/bash -c `
-        "/opt/mssql-tools/bin/sqlcmd -S $ServerInstance -U $SqlUser -P '$SqlPassword' -i /script.sql -t 300"
+    docker run --rm --network mi_red_sql -v "$($File.FullName):/script.sql" $SqlContainer /bin/bash -c `
+        "/opt/mssql-tools/bin/sqlcmd -S $ServerInstance -U $SqlUser -P '$SqlPassword' -i /script.sql"
     
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "Error en la ejecución de $($File.Name) - Código: $LASTEXITCODE" -ForegroundColor Red
+        Write-Host "Error en $($File.Name)" -ForegroundColor Red
         exit 1
     }
-    
-    Write-Host "  ✓ Completado exitosamente" -ForegroundColor Green
-    
-    # Pausa breve para evitar sobrecarga
-    Start-Sleep -Milliseconds 500
-    
-    # Limpiar contenedores cada 5 scripts
-    if ($counter % 5 -eq 0) {
-        Write-Host "  Limpiando contenedores intermedios..." -ForegroundColor Yellow
-        docker container prune -f | Out-Null
-    }
 }
 
-Write-Host "`nTablas creadas exitosamente." -ForegroundColor Green
+Write-Host "Tablas creadas." -ForegroundColor Green
 
-# Pausa entre fases
-Write-Host "`n=== PAUSA ENTRE EJECUCIONES ===" -ForegroundColor Cyan
-Start-Sleep -Seconds 3
-
-# ========== PASO 2: CREAR PROCEDIMIENTOS ==========
-Write-Host "`n=== CREANDO PROCEDIMIENTOS ALMACENADOS ===" -ForegroundColor Cyan
+# ========== CREAR PROCEDIMIENTOS ==========
+Write-Host "`n=== CREANDO PROCEDIMIENTOS ===" -ForegroundColor Cyan
 $SqlFiles = Get-ChildItem -Path $Procedures -Filter "*.sql" | Sort-Object Name
 
-# Verifica si hay archivos SQL
 if ($SqlFiles.Count -eq 0) {
-    Write-Host "Advertencia: No se encontraron archivos SQL en la ruta $Procedures" -ForegroundColor Yellow
+    Write-Host "No hay procedimientos para crear." -ForegroundColor Yellow
 } else {
-    Write-Host "Ejecutando scripts en master..." -ForegroundColor White
-    Write-Host "Se ejecutarán $($SqlFiles.Count) scripts de procedimientos..." -ForegroundColor White
-    
-    $counter = 0
     foreach ($File in $SqlFiles) {
-        $counter++
-        Write-Host "[$counter/$($SqlFiles.Count)] Ejecutando: $($File.Name)..." -ForegroundColor White
+        Write-Host "Ejecutando: $($File.Name)..." -ForegroundColor White
         
-        # Obtener ruta absoluta
-        $absolutePath = (Resolve-Path $File.FullName).Path
-        
-        # Ejecutar con límites de memoria y timeout - SIN especificar base de datos
-        docker run --rm `
-            --network mi_red_sql `
-            --memory=512m `
-            --memory-swap=512m `
-            -v "${absolutePath}:/script.sql" `
-            $SqlContainer /bin/bash -c `
-            "/opt/mssql-tools/bin/sqlcmd -S $ServerInstance -U $SqlUser -P '$SqlPassword' -i /script.sql -t 300"
+        docker run --rm --network mi_red_sql -v "$($File.FullName):/script.sql" $SqlContainer /bin/bash -c `
+            "/opt/mssql-tools/bin/sqlcmd -S $ServerInstance -U $SqlUser -P '$SqlPassword' -i /script.sql"
         
         if ($LASTEXITCODE -ne 0) {
-            Write-Host "Error en la ejecución de $($File.Name) - Código: $LASTEXITCODE" -ForegroundColor Red
+            Write-Host "Error en $($File.Name)" -ForegroundColor Red
             exit 1
-        }
-        
-        Write-Host "  ✓ Completado exitosamente" -ForegroundColor Green
-        
-        # Pausa breve para evitar sobrecarga
-        Start-Sleep -Milliseconds 500
-        
-        # Limpiar contenedores cada 5 scripts
-        if ($counter % 5 -eq 0) {
-            Write-Host "  Limpiando contenedores intermedios..." -ForegroundColor Yellow
-            docker container prune -f | Out-Null
         }
     }
     
-    Write-Host "`nProcedimientos creados exitosamente." -ForegroundColor Green
+    Write-Host "Procedimientos creados." -ForegroundColor Green
 }
 
-# Limpieza final
-Write-Host "`nLimpiando contenedores finales..." -ForegroundColor Yellow
-docker container prune -f | Out-Null
-
-Write-Host "`n========================================" -ForegroundColor Green
-Write-Host "✓ Base de datos y tablas creadas exitosamente en SQL Server." -ForegroundColor Green
-Write-Host "========================================`n" -ForegroundColor Green
+Write-Host "`n✓ PROCESO COMPLETADO" -ForegroundColor Green
