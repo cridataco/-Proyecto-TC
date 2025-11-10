@@ -1,136 +1,108 @@
 # Parámetros de conexión
 $ServerInstance = "sqlserver"  
-$DatabaseName = "1marchadev"
 $SqlUser = "sa"
 $SqlPassword = "abc123***"
 $SqlContainer = "mcr.microsoft.com/mssql-tools"
 
-# Rutas locales de los scripts SQL
-$Tablas = "./Tablas"
+# Ruta de procedimientos
 $Procedures = "./Procedures"
 
-# Verifica si los archivos existen
-if (!(Test-Path $Tablas) -or !(Test-Path $Procedures)) {
-    Write-Host "Error: No se encontraron los archivos SQL en la ruta especificada." -ForegroundColor Red
+# Verifica si existe la carpeta
+if (!(Test-Path $Procedures)) {
+    Write-Host "Error: No se encontró la carpeta de procedimientos." -ForegroundColor Red
     exit 1
 }
 
-Write-Host "=== LIMPIANDO BASE DE DATOS COMPLETA ===" -ForegroundColor Yellow
+Write-Host "=== CONTINUANDO CREACIÓN DE PROCEDIMIENTOS ===" -ForegroundColor Cyan
 
-# Script para limpiar TODO (tablas, procedimientos, funciones, vistas)
-$CleanupScript = @"
-USE master;
-GO
+# Archivo donde quedó (el último que intentó ejecutar)
+$archivoUltimoIntento = "clases_agenda_consultar_asignados_estudiante.sql"
 
-IF EXISTS (SELECT name FROM sys.databases WHERE name = N'$DatabaseName')
-BEGIN
-    ALTER DATABASE [$DatabaseName] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
-    DROP DATABASE [$DatabaseName];
-    PRINT 'Base de datos eliminada';
-END
-GO
+Write-Host "Buscando desde: $archivoUltimoIntento" -ForegroundColor Yellow
 
-CREATE DATABASE [$DatabaseName];
-GO
+# Obtener TODOS los procedimientos ordenados
+$TodosLosProcedimientos = Get-ChildItem -Path $Procedures -Filter "*.sql" | Sort-Object Name
 
-PRINT 'Base de datos creada exitosamente';
-GO
-"@
-
-# Guardar script de limpieza temporalmente
-$CleanupFile = "./cleanup_temp.sql"
-$CleanupScript | Out-File -FilePath $CleanupFile -Encoding UTF8
-
-# Ejecutar limpieza
-Write-Host "Eliminando y recreando la base de datos limpia..." -ForegroundColor Yellow
-docker run --rm --network mi_red_sql -v "$(Resolve-Path $CleanupFile):/cleanup.sql" $SqlContainer /bin/bash -c `
-    "/opt/mssql-tools/bin/sqlcmd -S $ServerInstance -U $SqlUser -P '$SqlPassword' -i /cleanup.sql"
-
-# Eliminar archivo temporal
-Remove-Item $CleanupFile -Force -ErrorAction SilentlyContinue
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Error al limpiar la base de datos" -ForegroundColor Red
-    exit 1
+# Encontrar el índice del archivo donde quedó
+$indiceInicio = 0
+for ($i = 0; $i -lt $TodosLosProcedimientos.Count; $i++) {
+    if ($TodosLosProcedimientos[$i].Name -eq $archivoUltimoIntento) {
+        $indiceInicio = $i + 1  # Empezar desde el SIGUIENTE
+        break
+    }
 }
 
-Write-Host "✓ Base de datos limpia y lista." -ForegroundColor Green
-Start-Sleep -Seconds 2
-
-# ========== CREAR TABLAS ==========
-Write-Host "`n=== CREANDO TABLAS ===" -ForegroundColor Cyan
-$SqlFiles = Get-ChildItem -Path $Tablas -Filter "*.sql" | Sort-Object Name
-
-if ($SqlFiles.Count -eq 0) {
-    Write-Host "Error: No se encontraron archivos SQL en $Tablas" -ForegroundColor Red
-    exit 1
+if ($indiceInicio -eq 0) {
+    Write-Host "No se encontró el archivo de referencia. Ejecutando todos..." -ForegroundColor Yellow
+    $SqlFiles = $TodosLosProcedimientos
+} else {
+    # Tomar solo los archivos DESPUÉS del que falló
+    $SqlFiles = $TodosLosProcedimientos[$indiceInicio..($TodosLosProcedimientos.Count - 1)]
+    Write-Host "Se encontró. Continuando desde el archivo #$($indiceInicio + 1)" -ForegroundColor Green
 }
 
-Write-Host "Total de scripts de tablas: $($SqlFiles.Count)" -ForegroundColor White
+$totalFaltantes = $SqlFiles.Count
+Write-Host "Procedimientos faltantes: $totalFaltantes" -ForegroundColor White
+Write-Host "========================================`n" -ForegroundColor Cyan
 
+if ($totalFaltantes -eq 0) {
+    Write-Host "No hay procedimientos pendientes." -ForegroundColor Green
+    exit 0
+}
+
+# Mostrar lista de procedimientos a ejecutar
+Write-Host "Archivos a ejecutar:" -ForegroundColor Cyan
+$SqlFiles | ForEach-Object { Write-Host "  - $($_.Name)" -ForegroundColor White }
+Write-Host ""
+
+$continuar = Read-Host "¿Continuar con la ejecución? (S/N)"
+if ($continuar -ne "S") {
+    Write-Host "Cancelado por el usuario." -ForegroundColor Yellow
+    exit 0
+}
+
+Write-Host "`nIniciando ejecución...`n" -ForegroundColor Green
+
+# Ejecutar procedimientos faltantes
 $counter = 0
 $errores = @()
 
 foreach ($File in $SqlFiles) {
     $counter++
-    Write-Host "[$counter/$($SqlFiles.Count)] Ejecutando: $($File.Name)..." -ForegroundColor White
+    Write-Host "[$counter/$totalFaltantes] Ejecutando: $($File.Name)..." -ForegroundColor White
     
     docker run --rm --network mi_red_sql -v "$($File.FullName):/script.sql" $SqlContainer /bin/bash -c `
         "/opt/mssql-tools/bin/sqlcmd -S $ServerInstance -U $SqlUser -P '$SqlPassword' -i /script.sql"
     
     if ($LASTEXITCODE -ne 0) {
         Write-Host "  ✗ Error en $($File.Name)" -ForegroundColor Red
-        $errores += "TABLA: $($File.Name)"
+        $errores += $File.Name
+        
+        # Preguntar si continuar
+        $respuesta = Read-Host "  ¿Continuar con el siguiente? (S/N)"
+        if ($respuesta -ne "S") {
+            Write-Host "`nProceso detenido por el usuario." -ForegroundColor Yellow
+            Write-Host "Último archivo intentado: $($File.Name)" -ForegroundColor Yellow
+            break
+        }
     } else {
         Write-Host "  ✓ Completado" -ForegroundColor Green
     }
+    
+    # Pausa breve entre ejecuciones
+    Start-Sleep -Milliseconds 300
 }
 
-if ($errores.Count -eq 0) {
-    Write-Host "`n✓ Todas las tablas creadas exitosamente." -ForegroundColor Green
-} else {
-    Write-Host "`n⚠ Tablas con errores: $($errores.Count)" -ForegroundColor Yellow
-}
-
-Start-Sleep -Seconds 2
-
-# ========== CREAR PROCEDIMIENTOS ==========
-Write-Host "`n=== CREANDO PROCEDIMIENTOS ===" -ForegroundColor Cyan
-$SqlFiles = Get-ChildItem -Path $Procedures -Filter "*.sql" | Sort-Object Name
-
-if ($SqlFiles.Count -eq 0) {
-    Write-Host "No hay procedimientos para crear." -ForegroundColor Yellow
-} else {
-    Write-Host "Total de procedimientos: $($SqlFiles.Count)" -ForegroundColor White
-    
-    $counter = 0
-    
-    foreach ($File in $SqlFiles) {
-        $counter++
-        Write-Host "[$counter/$($SqlFiles.Count)] Ejecutando: $($File.Name)..." -ForegroundColor White
-        
-        docker run --rm --network mi_red_sql -v "$($File.FullName):/script.sql" $SqlContainer /bin/bash -c `
-            "/opt/mssql-tools/bin/sqlcmd -S $ServerInstance -U $SqlUser -P '$SqlPassword' -i /script.sql"
-        
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "  ✗ Error en $($File.Name)" -ForegroundColor Red
-            $errores += "PROCEDURE: $($File.Name)"
-        } else {
-            Write-Host "  ✓ Completado" -ForegroundColor Green
-        }
-    }
-    
-    if ($errores.Count -eq 0) {
-        Write-Host "`n✓ Todos los procedimientos creados exitosamente." -ForegroundColor Green
-    }
-}
-
-# ========== RESUMEN FINAL ==========
+# Resumen final
 Write-Host "`n========================================" -ForegroundColor Cyan
+Write-Host "RESUMEN DE EJECUCIÓN" -ForegroundColor White
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "Total ejecutados: $counter de $totalFaltantes" -ForegroundColor White
+
 if ($errores.Count -eq 0) {
-    Write-Host "✓ PROCESO COMPLETADO SIN ERRORES" -ForegroundColor Green
+    Write-Host "✓ TODOS LOS PROCEDIMIENTOS CREADOS EXITOSAMENTE" -ForegroundColor Green
 } else {
-    Write-Host "⚠ PROCESO COMPLETADO CON $($errores.Count) ERRORES" -ForegroundColor Yellow
+    Write-Host "⚠ Errores encontrados: $($errores.Count)" -ForegroundColor Yellow
     Write-Host "`nArchivos con errores:" -ForegroundColor Yellow
     foreach ($error in $errores) {
         Write-Host "  - $error" -ForegroundColor Red
