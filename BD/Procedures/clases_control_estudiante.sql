@@ -19,11 +19,11 @@ begin
 	)
 	-- cantidad de clases y clases registradas
 	insert into #tmp_control_clases(cantidad_clases_curso, clases_registradas)
-	select cantidad_clases, count(cl.consecutivo_curso_estudiante) as clases_registradas
+	select clases_restantes, count(cl.consecutivo_curso_estudiante) as clases_registradas
 	from cursos_estudiante ce
 	inner join clases cl on cl.consecutivo_curso_estudiante = ce.consecutivo
 	where  ce.consecutivo= @id_curso_estudiante
-	group by cantidad_clases
+	group by clases_restantes
 
 	--clases disponible para registrar
 
