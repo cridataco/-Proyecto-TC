@@ -23,7 +23,7 @@ BEGIN
         WHERE consecutivo = @id_curso_estudiante;
 
         IF @@ROWCOUNT = 0
-            THROW 50001, 'No se encontr� el curso_estudiante con ese ID.', 1;
+            RAISERROR('No se encontró el curso_estudiante con ese ID.', 10, 1);
 
         COMMIT TRAN;
     END TRY
