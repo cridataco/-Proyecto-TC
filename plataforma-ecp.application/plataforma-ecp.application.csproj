@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <RootNamespace>plataforma_ecp.application</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="mercadopago-sdk" Version="2.3.2" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="7.0.1" />
+	<PackageReference Include="Swashbuckle.AspNetCore" Version="6.2.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\plataforma-ecp.domain\plataforma-ecp.domain.csproj" />
+  </ItemGroup>
+
+</Project>

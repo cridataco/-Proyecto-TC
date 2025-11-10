@@ -1,0 +1,7 @@
+# se crea volumen para persistencia de datos del container y la red
+docker volume create sqlserver_data 
+docker network create mi_red_sql
+
+#Crear el usuario SA de la base de datos, ejecutar contenedor de sql server
+docker run -e "ACCEPT_EULA=Y" -e "SA_PASSWORD=abc123***" -p 1433:1433 --name sqlserver --network mi_red_sql -v sqlserver_data:/var/opt/mssql -d mcr.microsoft.com/mssql/server:2022-latest
+
