@@ -15,8 +15,8 @@ if (!(Test-Path $Procedures)) {
 
 Write-Host "=== CONTINUANDO CREACIÓN DE PROCEDIMIENTOS ===" -ForegroundColor Cyan
 
-# Archivo donde quedó (el último que intentó ejecutar)
-$archivoUltimoIntento = "clases_agenda_consultar_asignados_estudiante.sql"
+# CAMBIAR AQUÍ: Último archivo que se intentó ejecutar antes del crash
+$archivoUltimoIntento = "pagos_paymentId_actualizar.sql"
 
 Write-Host "Buscando desde: $archivoUltimoIntento" -ForegroundColor Yellow
 
@@ -46,7 +46,7 @@ Write-Host "Procedimientos faltantes: $totalFaltantes" -ForegroundColor White
 Write-Host "========================================`n" -ForegroundColor Cyan
 
 if ($totalFaltantes -eq 0) {
-    Write-Host "No hay procedimientos pendientes." -ForegroundColor Green
+    Write-Host "✓ No hay procedimientos pendientes. ¡TODOS COMPLETADOS!" -ForegroundColor Green
     exit 0
 }
 
@@ -83,6 +83,7 @@ foreach ($File in $SqlFiles) {
         if ($respuesta -ne "S") {
             Write-Host "`nProceso detenido por el usuario." -ForegroundColor Yellow
             Write-Host "Último archivo intentado: $($File.Name)" -ForegroundColor Yellow
+            Write-Host "Para continuar, cambia la variable a: `$archivoUltimoIntento = `"$($File.Name)`"" -ForegroundColor Cyan
             break
         }
     } else {
