@@ -103,60 +103,39 @@ builder.Services.AddSingleton<IUriService>(provider =>
 #endregion
 
 #region CORS
+var allowedOrigins = new List<string>
+{
+    // Desarrollo local
+    "http://localhost:3000",
+    "http://localhost:5000",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5000",
+    
+    // Producción AWS (IP elástica)
+    "http://44.218.60.51:3000",
+    "http://44.218.60.51",
+    "https://44.218.60.51:3000",
+    "https://44.218.60.51"
+};
+
+// Agregar desde variable de entorno si existe
+var envOrigins = Environment.GetEnvironmentVariable("ALLOWED_ORIGINS");
+if (!string.IsNullOrEmpty(envOrigins))
+{
+    allowedOrigins.AddRange(
+        envOrigins.Split(';', StringSplitOptions.RemoveEmptyEntries)
+                  .Select(s => s.Trim())
+    );
+}
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("corsapp", policy =>
     {
-        policy.SetIsOriginAllowed(origin =>
-        {
-            if (string.IsNullOrWhiteSpace(origin)) return false;
-            origin = origin.Trim();
-            if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri)) return false;
-
-            if (uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
-                uri.Host.Equals("127.0.0.1")) return true;
-
-            if (uri.Host.StartsWith("192.168.") || uri.Host.StartsWith("10."))
-                return true;
-
-            if (uri.Host.StartsWith("172."))
-            {
-                if (int.TryParse(uri.Host.Split('.')[1], out var secondOctet))
-                {
-                    if (secondOctet >= 16 && secondOctet <= 31) return true;
-                }
-            }
-
-            if (uri.Host.Equals("44.218.60.51", StringComparison.OrdinalIgnoreCase))
-                return true;
-
-            if (uri.Host.StartsWith("44."))
-            {
-                if (int.TryParse(uri.Host.Split('.')[1], out var secondOctet))
-                {
-                    if (secondOctet >= 192 && secondOctet <= 255) return true;
-                }
-            }
-
-            var awsPrefixes = new[] { "3.", "18.", "52.", "54." };
-            if (awsPrefixes.Any(prefix => uri.Host.StartsWith(prefix)))
-                return true;
-
-            var allowed = Environment.GetEnvironmentVariable("ALLOWED_ORIGINS"); 
-            if (!string.IsNullOrEmpty(allowed))
-            {
-                var list = allowed.Split(';', StringSplitOptions.RemoveEmptyEntries)
-                                  .Select(s => s.Trim())
-                                  .ToArray();
-                if (list.Any(o => string.Equals(o, origin, StringComparison.OrdinalIgnoreCase)))
-                    return true;
-            }
-
-            return false;
-        })
-        .AllowAnyMethod()
-        .AllowAnyHeader()
-        .AllowCredentials();
+        policy.WithOrigins(allowedOrigins.ToArray())
+              .AllowAnyMethod()
+              .AllowAnyHeader()
+              .AllowCredentials();
     });
 });
 #endregion
