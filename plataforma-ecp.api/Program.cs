@@ -111,7 +111,6 @@ builder.Services.AddCors(options =>
         {
             if (string.IsNullOrWhiteSpace(origin)) return false;
             origin = origin.Trim();
-
             if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri)) return false;
 
             if (uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
@@ -127,6 +126,21 @@ builder.Services.AddCors(options =>
                     if (secondOctet >= 16 && secondOctet <= 31) return true;
                 }
             }
+
+            if (uri.Host.Equals("44.218.60.51", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            if (uri.Host.StartsWith("44."))
+            {
+                if (int.TryParse(uri.Host.Split('.')[1], out var secondOctet))
+                {
+                    if (secondOctet >= 192 && secondOctet <= 255) return true;
+                }
+            }
+
+            var awsPrefixes = new[] { "3.", "18.", "52.", "54." };
+            if (awsPrefixes.Any(prefix => uri.Host.StartsWith(prefix)))
+                return true;
 
             var allowed = Environment.GetEnvironmentVariable("ALLOWED_ORIGINS"); 
             if (!string.IsNullOrEmpty(allowed))
@@ -145,7 +159,6 @@ builder.Services.AddCors(options =>
         .AllowCredentials();
     });
 });
-
 #endregion
 
 var app = builder.Build();
