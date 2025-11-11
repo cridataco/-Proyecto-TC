@@ -103,39 +103,20 @@ builder.Services.AddSingleton<IUriService>(provider =>
 #endregion
 
 #region CORS
-var allowedOrigins = new List<string>
-{
-    // Desarrollo local
-    "http://localhost:3000",
-    "http://localhost:5000",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:5000",
-    
-    // Producción AWS (IP elástica)
-    "http://44.218.60.51:3000",
-    "http://44.218.60.51",
-    "https://44.218.60.51:3000",
-    "https://44.218.60.51"
-};
-
-// Agregar desde variable de entorno si existe
-var envOrigins = Environment.GetEnvironmentVariable("ALLOWED_ORIGINS");
-if (!string.IsNullOrEmpty(envOrigins))
-{
-    allowedOrigins.AddRange(
-        envOrigins.Split(';', StringSplitOptions.RemoveEmptyEntries)
-                  .Select(s => s.Trim())
-    );
-}
-
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("corsapp", policy =>
+    options.AddPolicy("corsapp", builder =>
     {
-        policy.WithOrigins(allowedOrigins.ToArray())
-              .AllowAnyMethod()
-              .AllowAnyHeader()
-              .AllowCredentials();
+        builder.WithOrigins(
+                   "http://localhost:3000",
+                   "http://localhost:5000",
+                   "http://127.0.0.1:3000",
+                   "http://44.218.60.51:3000",
+                   "http://44.218.60.51"
+               )
+               .AllowAnyMethod()
+               .AllowAnyHeader()
+               .AllowCredentials(); 
     });
 });
 #endregion
